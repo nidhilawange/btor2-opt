@@ -815,4 +815,5 @@ class Parser:
 
         # Parser is done parsing
         self.done = True
+        return self.p # now btor2 gets the parsed program (parsed instruction list) itself
 

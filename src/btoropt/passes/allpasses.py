@@ -22,10 +22,15 @@ from ..passes.genericpass import Pass
 from ..passes.transforms.renameInputs import RenameInputs
 from ..passes.transforms.initAllStates import InitAllStates
 from ..passes.validation.checkLidOrdering import CheckLidOrdering
+from ..passes.transforms.renameStates import RenameStates
+from ..passes.transforms.stateIncrement import StateIncrement
+from ..passes.transforms.combAdder import CombAdder
 
 # Retrieves a pass from the list given an id
 def find_pass(p: list[Pass], id: str) -> Pass:
     return next((e for e in p if e.id == id), None)
 
 # List containing all passes
-all_passes = [RenameInputs(), InitAllStates(), CheckLidOrdering()]
+all_passes = [RenameInputs(), InitAllStates(), CheckLidOrdering(), RenameStates(), StateIncrement(), CombAdder()]
+
+
