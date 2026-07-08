@@ -59,6 +59,18 @@ class CombAdder(Pass):
         print("Inputs:",[input.name for input in inputs])
         print("Add Instruction:",add_instruction)
         print("Output Instruction:",output_instruction)
+
+        input_ports = ", ".join([f"%{inp.name}: {circt_type}" for inp in inputs])
+
+        mlir = f"""
+        hw.module @comb_adder({input_ports} , out: {circt_type}) {{
+            %sum = comb.add {left_name}, {right_name} : {circt_type}
+            hw.output %sum : {circt_type}
+            }}
+            """
+
+        print(mlir)
+        
             
         # return original btor2 program with no change for now
         return program
