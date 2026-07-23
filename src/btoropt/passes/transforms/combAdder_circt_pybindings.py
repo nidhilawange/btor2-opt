@@ -1,4 +1,13 @@
-# Nidhi Lawange
+# ========================================================================# Nidhi Lawange
+#
+# Description:
+# Demonstrates a simple BTOR2-inspired combinational adder in CIRCT Python.
+# Creates an 8-bit hardware module with two inputs and one output, generates
+# a combinational addition using the HW and Comb dialects, and prints the
+# resulting CIRCT MLIR representation. This serves as the foundation for the
+# generalized BTOR2-to-CIRCT translator.
+# ========================================================================
+
 import circt
 from circt.ir import Context, Location, Module, InsertionPoint, IntegerType
 from circt.dialects import hw, comb

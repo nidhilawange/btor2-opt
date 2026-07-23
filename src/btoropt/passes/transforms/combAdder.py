@@ -1,5 +1,13 @@
+# ========================================================================
 # Nidhi Lawange
-
+#
+# Description:
+# Prototype BTOR2-to-CIRCT translation pass that identifies a simple
+# combinational adder in a parsed BTOR2 program and generates the equivalent
+# CIRCT MLIR representation as text. This implementation demonstrates the
+# overall translation workflow and served as the initial proof-of-concept
+# before developing the generalized BTOR2-to-CIRCT translator.
+# ========================================================================
 from ...passes.genericpass import Pass
 from ...program import Instruction, Input, Output, Add, State, Init, Constd
 
