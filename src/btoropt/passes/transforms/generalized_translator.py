@@ -87,6 +87,21 @@ class Btor2CirctTranslator:
                 # move to the next hardware module input port
                 block_arg_index += 1
 
+    def map_output_values(self):
+        output_values = []
+
+        for instruction in self.program:
+            if instruction.inst == "output":
+
+                # obtain the btor2 instruction referenced by this output
+                instruction_reference = instruction.operands[0]
+
+                # Look up its already translated circt SSA value
+                output_value = self.line_value_dict[instruction_reference.lid]
+                output_values.append(output_value)
+
+        return output_values
+
     
     # mapping operation results to SSA values
     #def translate_add_instruction(self):
@@ -187,7 +202,7 @@ class Btor2CirctTranslator:
                 # circt version expects the operands as a list rather than 2 separate arguments (self, list = [input,output])
                 # replace this: sum_op = comb.AddOp([a,b]), sum_val = # sum_op.result with:
                 #self.translate_add_instruction()
-                self.translate_any_instruction()
+                self.translate_any_binary_instruction()
 
                 # create hardware output operation --> hw.output %0 - %0 is sum_val
                 # replace this:hw.OutputOp([self.line_value_dict[5]]) with this:
