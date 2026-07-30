@@ -66,3 +66,4 @@ with Context() as ctx, Location.unknown():
         hw.OutputOp([sum_val])
     # printing mlir:)
     print(module)
+    

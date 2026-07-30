@@ -1,6 +1,0 @@
-1 sort bitvec 8
-2 input 1 a
-3 input 1 b
-4 add 1 2 3
-5 add 1 4 2
-6 output 5 result
