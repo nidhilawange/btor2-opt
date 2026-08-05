@@ -568,42 +568,7 @@ class Btor2CirctTranslator(Pass):
         self.line_value_dict[instruction.lid] = concat_operation.result
     
     #-------------------------------------------------------------------
-    # replace translate_add_instruction() with the following method which now utilizes the generalized translate_binary_operation() function
-    def translate_any_binary_instruction(self):
-        for instruction in self.program:
-            instruction_type = type(instruction)
-
-            if instruction_type in self.binary_op_dict:
-                self.translate_binary_operation(
-                    instruction,
-                    self.binary_op_dict[instruction_type],
-                )
-        
-    def translate_any_const_instruction(self):
-            for instruction in self.program:
     
-                if isinstance(instruction, (Const, Constd, Consth)):
-                    self.translate_const_operation(instruction)
-
-    def translate_any_unary_instruction(self):
-        specific_const_unary_ops_tuple = (Zero,One,Ones)
-        general_unary_ops_tuple = (Not,Inc,Dec,Neg)
-        reduction_unary_ops_tuple = (Redor,Redand,Redxor)
-        for instruction in self.program:
-            if isinstance(instruction,specific_const_unary_ops_tuple):
-                self.translate_special_constant(instruction)
-            elif isinstance(instruction,general_unary_ops_tuple):
-                self.translate_general_unary_operation(instruction)
-            elif isinstance(instruction,reduction_unary_ops_tuple):
-                self.translate_reduction_unary_operation(instruction)
-
-    def translate_any_comparison_instruction(self):
-        
-        for instruction in self.program:
-            instruction_type = type(instruction)
-            if instruction_type in self.comparison_op_dict:
-                self.translate_comparison_operation(instruction, comparison_op=self.comparison_op_dict[instruction_type])
-    #-------------------------------------------------------------------
     def translate_instructions_in_program_order(self):
         """
         Translate value-producing BTOR2 instructions once, in the order in which they show up in the original program
