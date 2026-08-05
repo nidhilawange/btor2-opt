@@ -21,7 +21,7 @@ from circt.dialects import hw, comb
 
 # Import the existing btor2-opt pass interface.
 from ..genericpass import Pass
-from ...program import Instruction, Sort, Input, Output, Add, Sub, Xor, Or,And, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq
+from ...program import Instruction, Sort, Input, Output, Add, Sub, And, Or, Xor, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq, Neq, Ugt, Ugte, Ult, Ulte, Sgt, Sgte, Slt, Slte, Ite, Slice, Concat, Uext, Sext
 
 
 # The generalized translator now inherits from Pass so it can be invoked
@@ -47,14 +47,34 @@ class Btor2CirctTranslator(Pass):
         # by automated tests or other parts of the translation flow.
         self.generated_module = None
 
+        # map each btor2 comparison instruction class to the corresponding CIRCT binary operation wrappers
+        self.binary_op_dict = {
+            Add: comb.AddOp,
+            Sub: comb.SubOp,
+            And: comb.AndOp,
+            Or: comb.OrOp,
+            Xor: comb.XorOp,
+        }
+        
+        # Map each btor2 comparison instruction class to the corresponding CIRCT comparison wrapper
+        self.comparison_op_dict = {
+            Eq: comb.EqOp,
+            Neq: comb.NeOp,
+            Ult: comb.LtUOp,
+            Ulte: comb.LeUOp,
+            Ugt: comb.GtUOp,
+            Ugte: comb.GeUOp,
+            Slt: comb.LtSOp,
+            Slte: comb.LeSOp,
+            Sgt: comb.GtSOp,
+            Sgte: comb.GeSOp,
+        }
     def run(self, p: list[Instruction]) -> list[Instruction]:
         
-        #Run the generalized BTOR2-to-CIRCT translator as a btor2-opt pass.
-
+        #Run the generalized BTOR2-to-CIRCT translator as a btor2-opt pass
         self.program = p
 
-        # Clear previous mappings in case the same pass object is reused on
-        # another BTOR2 program.
+        # Clear previous mappings in case the same pass object is reused on a previous btor2 program
         self.line_value_dict.clear()
         self.line_type_dict.clear()
         self.generated_module = None
@@ -199,37 +219,7 @@ class Btor2CirctTranslator(Pass):
             self.line_value_dict[instruction.lid] = operation.result
     
 
-    # mapping operation results to SSA values
-    # def translate_add_instruction(self):
-    #     for instruction in self.program:
-    #         if instruction.inst == "add":
-    #
-    #             # operands[1] and operands[2] correspond to the left
-    #             # and right input instructions of btor2 add operation
-    #             left_instruction = instruction.operands[1]
-    #             right_instruction = instruction.operands[2]
-    #
-    #             # obtain the CIRCT SSA values that were previously
-    #             # generated for the left and right btor2 operands
-    #             left_val = self.line_value_dict[
-    #                 left_instruction.lid
-    #             ]
-    #
-    #             right_val = self.line_value_dict[
-    #                 right_instruction.lid
-    #             ]
-    #
-    #             # create the corresponding CIRCT comb.add operation
-    #             add_op = comb.AddOp([left_val, right_val])
-    #
-    #             # store resulting CIRCT SSA value using the BTOR2
-    #             # line ID so future instructions can reference it
-    #             self.line_value_dict[instruction.lid] = add_op.result
-
-    #
-    
-
-    # translate btor2 constants into CIRCT SSA values
+       # translate btor2 constants into CIRCT SSA values
     def translate_const_operation(self, instruction):
 
         # Every BTOR2 constant references a sort through instruction.sid
@@ -254,27 +244,31 @@ class Btor2CirctTranslator(Pass):
 
         bit_width = constant_type.width
 
-        # generate a constant value of 0 from btor
-        if isinstance(instruction, Zero):
-            constant_value = 0
+        match instruction: # checking whether instruction object is an object of type 'case'
+            # generate a constant value of 0 from btor
+            case Zero():
+                constant_value = 0
 
-        # generate a constant value of 1 from btor
-        elif isinstance(instruction, One):
-            constant_value = 1
+            # generate a constant value of 1 from btor
+            case One():
+                constant_value = 1
 
-        # generate a constant value of the assigned bit width for this constant in the btor program that is all "ones"
-        # to get all 1s, you need 1 less than a power of 2 in binary
-        # so create a mask of 1, shift if left by the bit width (up until the MSB of the constant) [(bit_width+1)-value] and obtain a power of 2 where only the MSB = 1
-        # then subtract 1 to get a constant [bit_width-value] of all ones (100000000 --> 11111111)
-        elif isinstance(instruction, Ones):
-            # For width 8:
-            # (1 << 8) - 1 = 255 = 11111111
-            constant_value = (1 << bit_width) - 1
+            # generate a constant value of the assigned bit width for this constant in the btor program that is all "ones"
+            # to get all 1s, you need 1 less than a power of 2 in binary
+            # so create a mask of 1, shift if left by the bit width (up until the MSB of the constant) [(bit_width+1)-value] and obtain a power of 2 where only the MSB = 1
+            # then subtract 1 to get a constant [bit_width-value] of all ones (100000000 --> 11111111)
+            case Ones():
+                # For width 8:
+                # (1 << 8) - 1 = 255 = 11111111
+                constant_value = (1 << bit_width) - 1
 
-        const_op_result = self.create_constant
-        (constant_type, constant_value)
+        const_op_result = self.create_constant(
+            constant_type,
+            constant_value,
+        )
 
         self.line_value_dict[instruction.lid] = const_op_result
+
 
     def translate_general_unary_operation(self, instruction):
         # operands[0] is the result sort
@@ -285,43 +279,47 @@ class Btor2CirctTranslator(Pass):
         operand_value = self.line_value_dict[operand_instruction.lid]
         bit_width = result_type.width
 
-        if isinstance(instruction, Not):
-            # bitwise NOT is same as XORing the original value with an all-ones value because XORing any single bit with 1 will always produce the opposite of that bit -- XOR flips bits
-            # so create a constant value of 1s which has width equal to the necessary bit width of the value that we are "Not"ing
-            # and XOR both of them
-            ones_value = self.create_constant(
-                result_type,
-                (1 << bit_width) - 1, # value of instruction that should be the constant: 11111111
-            )
+        match instruction: # checking whether instruction object is an object of type 'case' 
+            case Not():
+                # bitwise NOT is same as XORing the original value with an all-ones value because XORing any single bit with 1 will always produce the opposite of that bit -- XOR flips bits
+                # so create a constant value of 1s which has width equal to the necessary bit width of the value that we are "Not"ing
+                # and XOR both of them
+                ones_value = self.create_constant(
+                    result_type,
+                    (1 << bit_width) - 1,  # value of instruction that should be the constant: 11111111
+                )
 
-            operation = comb.XorOp([operand_value, ones_value])
+                operation = comb.XorOp([operand_value, ones_value])
 
-        elif isinstance(instruction, Inc):
-            # x + 1
-            # create constant value 1
-            one_value = self.create_constant(result_type,1)
+            case Inc():
+                # x + 1
+                # create constant value 1
+                one_value = self.create_constant(result_type, 1)
 
-            # utilize Add operation
-            operation = comb.AddOp([operand_value, one_value])
+                # utilize Add operation
+                operation = comb.AddOp([operand_value, one_value])
 
-        elif isinstance(instruction, Dec):
-            # x - 1
-            #create constant value 1
-            one_value = self.create_constant(
-                result_type,
-                1,)
-            # utilize Sub operation
-            operation = comb.SubOp([operand_value, one_value])
+            case Dec():
+                # x - 1
+                #create constant value 1
+                one_value = self.create_constant(
+                    result_type,
+                    1,
+                )
+                # utilize Sub operation
+                operation = comb.SubOp([operand_value, one_value])
 
-        elif isinstance(instruction, Neg):
-            # to negate a value x, perform x = 0 - x
-            # create constant value 0
-            zero_value = self.create_constant(
-                result_type,
-                0,)
-            # utilize Sub operation
-            operation = comb.SubOp(
-                [zero_value, operand_value])
+            case Neg():
+                # to negate a value x, perform x = 0 - x
+                # create constant value 0
+                zero_value = self.create_constant(
+                    result_type,
+                    0,
+                )
+                # utilize Sub operation
+                operation = comb.SubOp(
+                    [zero_value, operand_value]
+                )
         self.line_value_dict[instruction.lid] = operation.result
 
     def translate_reduction_unary_operation(self, instruction):
@@ -369,8 +367,9 @@ class Btor2CirctTranslator(Pass):
 
         # Store the one-bit circt ssa result under the BTOR2 instruction's line ID so later instructions can use it
         self.line_value_dict[instruction.lid] = operation_result
+
     
-    def translate_comparison_operation(self,instruction):
+    def translate_comparison_operation(self,instruction,comparison_op):
 
         lhs_instruction = instruction.operands[1]
         rhs_instruction = instruction.operands[2]
@@ -378,46 +377,208 @@ class Btor2CirctTranslator(Pass):
         lhs_op_value = self.line_value_dict[lhs_instruction.lid]
         rhs_op_value = self.line_value_dict[rhs_instruction.lid]
 
-        if isinstance(instruction, Eq):
-            comp_operation_result = self.create_comparison(
-                                comb.EqOp,
-                                lhs_op_value,
-                                rhs_op_value,
-                            )
+        
+        comp_operation_result = self.create_comparison(
+                                        comparison_op,
+                                        lhs_op_value,
+                                        rhs_op_value,
+                                    )
 
         # update the ssa value for this instruction
         self.line_value_dict[instruction.lid] = comp_operation_result
 
+
+    def translate_ite_operation(self, instruction):
+            # btor: <lid> ite <sort> <condition> <true_value> <false_value>
+            #operands[1] is the one-bit select condition that decides which value should be chosen in mux
+            condition_instruction = instruction.operands[1]
+    
+            # operands[2] is the value returned when the condition is 1 (true)
+            true_instruction = instruction.operands[2]
+    
+            # operands[3] is the value returned when the condition is 0 (false)
+            false_instruction = instruction.operands[3]
+    
+            # Earlier translation steps already converted each referenced btor instruction into a circt SSA value and stored it in line_value_dict
+            # Retrieve those SSA values so they can be used as operands to comb.mux
+            condition_value = self.line_value_dict[
+                condition_instruction.lid
+            ]
+    
+            true_value = self.line_value_dict[true_instruction.lid]
+    
+            false_value = self.line_value_dict[false_instruction.lid]
+    
+            # Create the corresponding CIRCT mux operation
+            # The mux:condition = 1  --> result = true_value
+            # condition = 0  --> result = false_value
+            # same behavior as btor ite instruction.
+            operation = comb.MuxOp.create(
+                condition_value,
+                true_value,
+                false_value,
+            )
+    
+            # The mux produces a new SSA result representing the selected value --> Store that SSA value under this BTOR2 instruction's line ID so any later BTOR2 instruction referring to this ite instruction can look it up in line_value_dict.
+            self.line_value_dict[instruction.lid] = (
+                operation.operation.results[0]
+            )
+
+    def translate_slice_operation(self, instruction):
+        # BTOR2 slice form: <lid> slice <sort> <operand> <highbit> <lowbit>
+        # operands[0] is the result sort of the extracted bit range
+        result_sort_instruction = instruction.operands[0]
+
+        # operands[1] is the original bit-vector that's being sliced
+        source_instruction = instruction.operands[1]
+
+        # Retrieve the CIRCT type for the slice result --> extracting bits [7:4] produces a 4-bit result type
+        result_type = self.line_type_dict[
+            result_sort_instruction.lid
+        ]
+
+        # Retrieve the CIRCT SSA value produced for the source BTOR2 instruction
+        source_value = self.line_value_dict[
+            source_instruction.lid
+        ]
+
+        # BTOR2 describes the slice using highbit and lowbit --> CIRCT comb.extract only needs the low-bit offset because the result width is already encoded in result_type
+        low_bit = instruction.lowbit
+
+        # create(low_bit, result_type, input) --> btor bits [7:4] --> low_bit = 4, result_type = i4
+        operation = comb.ExtractOp.create(
+            low_bit,
+            result_type,
+            source_value,
+        )
+
+        # Store the actual MLIR SSA result so later BTOR2 instructions can
+        # reference this slice instruction through its line ID.
+        self.line_value_dict[instruction.lid] = (
+            operation.operation.results[0]
+        )
+
+    def translate_concat_operation(self,instruction):
+        # btor form: <lid> concat <sort> <op1> <op2>
+
+        # operands[1] becomes upper section of the result
+        left_instruction = instruction.operands[1]
+        #operands[2] = becomes lower section of the result
+        right_instruction = instruction.operands[2]
+
+        #obtain circt SSA values that were previously generated for the operands
+        left_value = self.line_value_dict[left_instruction.lid]
+        right_value = self.line_value_dict[right_instruction.lid]
+
+        # combine both bitvectors into one wider value of bitwidth = bitwidth of operand 1 + bitwidth of operand 2
+        operation = comb.ConcatOp([left_value,right_value])
+
+        # store that new SSA value for wider-bit result so that later btor instructions can use it 
+        self.line_value_dict[instruction.lid] = operation.result
+
+    def translate_uext_operation(self, instruction):
+
+        # operands[0] is the result sort type after extending the operand
+        result_sort_instruction = instruction.operands[0]
+
+        # operands[1] is the bitvector being extended
+        operand_instruction = instruction.operands[1]
+
+        # obtain the existing circt SSA value
+        operand_value = self.line_value_dict[
+            operand_instruction.lid
+        ]
+
+        # If no extension is required, btor2 treats this as judt an alias-holding value - no change
+        if instruction.width == 0:
+            self.line_value_dict[instruction.lid] = operand_value
+            return
+
+        # Create a type for the extension bits
+        extension_type = IntegerType.get_signless(
+            instruction.width
+        )
+
+        # Create a constant containing all zeros to be placed on the left side of the MSB of the current operand
+        zero_value = self.create_constant(
+            extension_type,
+            0,
+        )
+
+        # then concatenate the zero bits onto the front of the operand
+        operation = comb.ConcatOp(
+            [zero_value, operand_value]
+        )
+
+        # Store the extended ssa value in the dictionary to be accessed later if needed
+        self.line_value_dict[instruction.lid] = operation.result
+
+
+    def translate_sext_operation(self, instruction):
+        # operands[0] is the result sort after sign extension is completed
+        result_sort_instruction = instruction.operands[0]
+
+        # operands[1] is the original bitvector being extended
+        operand_instruction = instruction.operands[1]
+
+        # obtain the circt SSA value for the original operand
+        operand_value = self.line_value_dict[
+            operand_instruction.lid
+        ]
+
+        # If no additional bits are requested, the sext instruction behaves like an alias-holder so just reuse original SSA value
+        if instruction.width == 0:
+            self.line_value_dict[instruction.lid] = operand_value
+            return
+
+        # get the index of the sign bit of the operand -- the MSB of the original operand; i4 value --> its bit index is 3
+        operand_width = operand_value.type.width
+        sign_bit_index = operand_width - 1
+
+        # Extract exactly one bit from the most-significant position.
+        sign_bit_type = IntegerType.get_signless(1)
+
+        sign_bit_operation = comb.ExtractOp.create(
+            sign_bit_index,
+            sign_bit_type,
+            operand_value,
+        )
+
+        sign_bit_value = sign_bit_operation.operation.results[0]
+
+        # Create a type with a width equal to the number of extension bits --> ReplicateOp uses this result width to determine how many copies of the one-bit sign value should be produced.
+        extension_type = IntegerType.get_signless(
+            instruction.width
+        )
+
+        # Repeat the sign bit until the new upper bits are filled up
+        replicated_sign_operation = comb.ReplicateOp(
+            extension_type,
+            sign_bit_value,
+        )
+
+        replicated_sign_value = replicated_sign_operation.result
+
+        # put the replicated sign bits in front of the original operand
+        concat_operation = comb.ConcatOp(
+            [replicated_sign_value, operand_value]
+        )
+
+        # Store the sign-extended SSA value so later btor instructions can reference this sext instruction if needed
+        self.line_value_dict[instruction.lid] = concat_operation.result
+    
     #-------------------------------------------------------------------
     # replace translate_add_instruction() with the following method which now utilizes the generalized translate_binary_operation() function
     def translate_any_binary_instruction(self):
         for instruction in self.program:
-            if isinstance(instruction,Add):
-                self.translate_binary_operation(
-                    instruction,
-                    comb.AddOp,
-                )
-            elif isinstance(instruction,Sub):
-                self.translate_binary_operation(
-                    instruction,
-                    comb.SubOp,
-                )
-            elif isinstance(instruction,And):
-                self.translate_binary_operation(
-                    instruction,
-                    comb.AndOp,
-                )
-            elif isinstance(instruction,Or):
-                self.translate_binary_operation(
-                    instruction,
-                    comb.OrOp,
-                )
-            elif isinstance(instruction,Xor):
-                self.translate_binary_operation(
-                    instruction,
-                    comb.XorOp,
-                )
+            instruction_type = type(instruction)
 
+            if instruction_type in self.binary_op_dict:
+                self.translate_binary_operation(
+                    instruction,
+                    self.binary_op_dict[instruction_type],
+                )
+        
     def translate_any_const_instruction(self):
             for instruction in self.program:
     
@@ -439,20 +600,76 @@ class Btor2CirctTranslator(Pass):
     def translate_any_comparison_instruction(self):
         
         for instruction in self.program:
-            '''
-            print("Comparison instruction:", instruction)
-            print("Operands:", instruction.operands)
-            '''
-            if isinstance(instruction,Eq):
-                '''for operand in instruction.operands:
-                                print(
-                                    "operand type:",
-                                    type(operand),
-                                    "lid:",
-                                    getattr(operand, "lid", None)
-                                    )'''
-                self.translate_comparison_operation(instruction)
+            instruction_type = type(instruction)
+            if instruction_type in self.comparison_op_dict:
+                self.translate_comparison_operation(instruction, comparison_op=self.comparison_op_dict[instruction_type])
     #-------------------------------------------------------------------
+    def translate_instructions_in_program_order(self):
+        """
+        Translate value-producing BTOR2 instructions once, in the order in which they show up in the original program
+
+        Since BTOR2 instructions can only reference previously defined line IDs, each operand's CIRCT SSA value should already exist in
+        line_value_dict when the instruction is reached.
+        """
+
+        constant_op_types = (Const, Constd, Consth)
+        special_constant_op_types = (Zero, One, Ones)
+        general_unary_op_types = (Not, Inc, Dec, Neg)
+        reduction_unary_op_types = (Redor, Redand, Redxor)
+
+        for instruction in self.program:
+            instruction_type = type(instruction)
+
+            # Sorts were already processed while constructing line_type_dict
+            if isinstance(instruction, Sort):
+                continue
+
+            # Inputs were already mapped to the hw.module block arguments
+            elif isinstance(instruction, Input):
+                continue
+
+            # Outputs are handled after all the value-producing instructions have been translated
+            elif isinstance(instruction, Output):
+                continue
+
+            elif isinstance(instruction, constant_op_types):
+                self.translate_const_operation(instruction)
+
+            elif isinstance(instruction, special_constant_op_types):
+                self.translate_special_constant(instruction)
+
+            elif isinstance(instruction, general_unary_op_types):
+                self.translate_general_unary_operation(instruction)
+
+            elif isinstance(instruction, reduction_unary_op_types):
+                self.translate_reduction_unary_operation(instruction)
+
+            elif instruction_type in self.binary_op_dict:
+                self.translate_binary_operation(
+                    instruction,
+                    self.binary_op_dict[instruction_type],
+                )
+
+            elif instruction_type in self.comparison_op_dict:
+                self.translate_comparison_operation(
+                    instruction,
+                    self.comparison_op_dict[instruction_type],
+                )
+
+            elif isinstance(instruction, Ite):
+                self.translate_ite_operation(instruction)
+
+            elif isinstance(instruction, Slice):
+                self.translate_slice_operation(instruction)
+
+            elif isinstance(instruction, Concat):
+                self.translate_concat_operation(instruction)
+
+            elif isinstance(instruction, Uext):
+                self.translate_uext_operation(instruction)
+
+            elif isinstance(instruction, Sext):
+                self.translate_sext_operation(instruction)
 
     def translate_btor_program(self):
 
@@ -463,12 +680,11 @@ class Btor2CirctTranslator(Pass):
             circt.register_dialects(ctx)
 
             # Build the CIRCT type map from the BTOR2 sort instructions.
-            #
             # This replaces manually creating a fixed type such as:
             # i8 = IntegerType.get_signless(8)
             self.construct_type_dict()
 
-            print("Type map:", self.line_type_dict)
+            #print("Type map:", self.line_type_dict)
 
             input_ports_list = self.construct_input_ports()
             output_ports_list = self.construct_output_ports()
@@ -483,86 +699,41 @@ class Btor2CirctTranslator(Pass):
                 adder = hw.HWModuleOp(
                     name="comb_adder",
 
-                    # replace:
-                    # [("a", i8), ("b", i8)]
-                    # with input_ports_list returned from
+                    # input_ports_list returned from
                     # construct_input_ports()
                     input_ports=input_ports_list,
 
-                    # replace:
-                    # [("c", i8)]
-                    # with output_ports_list returned from
+                    # output_ports_list returned from
                     # construct_output_ports()
                     output_ports=output_ports_list,
                 )
 
-                # print(type(adder))
-                # print(dir(adder))
-                # help(adder) --> add_entry_block()
-
-            # HWModuleOp
-            #     |
-            # body (Region)
-            #     |
-            # Block
-            #
             # Since the Region initially contains no blocks,
             # we must explicitly create one.
             block = adder.add_entry_block()
 
             with InsertionPoint(block):
 
-                # replace:
-                # a = block.arguments[0]  # input "a"
-                # b = block.arguments[1]  # input "b"
-                #
                 # with automatic input SSA value mapping
                 self.map_input_ports_values(block)
-
-                # CIRCT version expects operands as a list rather than
-                # two separate arguments:
-                #
-                # self, list = [input, output]
-                #
-                # replace:
-                # sum_op = comb.AddOp([a, b])
-                # sum_val = sum_op.result
-                #
-
-                #help(hw.ConstantOp)
-                #print(dir(hw.ConstantOp)) 
-
-
-                # Translate constants first so that their CIRCT SSA    # values are available before arithmetic or bitwise    # operations --> attempt to use them as operands.
-                self.translate_any_const_instruction()
-
-                # translate any unary operation instructions (either general or reduction or general unary instructions)
-                self.translate_any_unary_instruction()
-
-                # replace self.translate_add_instruction() with generalized binary instruction translation
-                self.translate_any_binary_instruction()
-
-                
-                # generalized comparison instruction
-                # print(inspect.getsource(comb.ICmpOp.__init__))
-                #print(comb.ICmpOp)
-                #help(comb.ICmpOp)
-                self.translate_any_comparison_instruction()
-                
+        
+                # Translate every value-producing BTOR2 instruction once, in the same order in which it appears in the original btor program
+                #help(comb.MuxOp)
+                #help(comb.ExtractOp)
+                #print(hasattr(comb.ExtractOp, "create"))
+                #help(comb.ConcatOp)
+                #help(comb.ReplicateOp)
+                self.translate_instructions_in_program_order()
+                                
                 # create hardware output operation
                 # hw.output %0, where %0 is the translated output value
-                #
-                # replace:
-                # hw.OutputOp([self.line_value_dict[5]])
-                #
-                # with automatic output SSA value collection
+                # automatic output SSA value collection
                 output_values = self.map_output_values()
-                for value in output_values:
-                                    print(value)
-                                    print(type(value))
+                #for value in output_values:
+                 #                   print(value)
+                  #                  print(type(value))
                                     
                 hw.OutputOp(output_values)
 
-            # return the generated MLIR module to run(), where it is stored
-            # in self.generated_module
+            # return the generated MLIR module to run(), where it is stored in self.generated_module
             return module
