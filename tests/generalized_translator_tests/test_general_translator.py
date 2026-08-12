@@ -1,10 +1,11 @@
 # Nidhi Lawange: copied from test.py -- parsing & pass tester for generalized_translator which is a WIP
 
 import unittest
-
+from pathlib import Path
 from src.btoropt.parser import parse
 from src.btoropt.passes.allpasses import all_passes, find_pass
 
+input_btor_path = Path("tests/generalized_translator_tests/input_btor")
 
 def parsewrapper(filepath):
     with open(filepath, "r") as f:
@@ -12,46 +13,57 @@ def parsewrapper(filepath):
 
 
 class BTORTestGeneralizedTranslator(unittest.TestCase):
-    #check whether the generalized BTOR2-to-CIRCT pass works properly
-
+    #check whether the generalized BTOR2-to-MLIR pass works properly
+    # pathlib usage for filename extraction: https://docs.python.org/3/library/pathlib.html
+    
     # Checks that a combinational adder BTOR2 program can be translated
     # into a CIRCT module through the registered pass infrastructure
-    def test_comb_adder(self):
+    def test_any_btor_program(self):
 
-        # Parse the test input using the existing parser
-        program = parse(
-            parsewrapper("tests/generalized_translator_tests/input_btor/comb_adder_general.btor2")
-        )
+        # Find all .btor2 test files in the input directory.
+        input_btor_programs = input_btor_path.glob("*.btor2")
 
-        # obtain the generalized translator from the registered pass list
-        translator_pass = find_pass(
-            all_passes,
-            "generalized-translator"
-        )
+        # Run the generalized translator separately on every BTOR2 file.
+        for input_btor_file in input_btor_programs:
 
-        # Confirm that the pass was actually registered in allpasses.py
-        self.assertIsNotNone(translator_pass)
+            # Extract the filename without the .btor2 extension
+            module_name = input_btor_file.stem
 
-        # Run the translator through the same Pass.run() interface used by all other passes
-        returned_program = translator_pass.run(program)
+            # Parse this BTOR2 file using the existing btor2 parser
+            program = parse(
+                parsewrapper(input_btor_file)
+            )
 
-        # translator preserves the original BTOR2 instruction list so that it remains compatible with the existing pass structure
-        self.assertEqual(returned_program, program)
+            # Obtain the registered generalized translator pass.
+            translator_pass = find_pass(
+                all_passes,
+                "generalized-translator"
+            )
 
-        # generated CIRCT module is stored by the translator pass
-        generated_module = translator_pass.generated_module
+            # Confirm that the pass was actually registered in allpasses.py
+            self.assertIsNotNone(translator_pass)
+            
+            # Run the translator through the same Pass.run() interface used by all other passes
+            translator_pass.module_name = module_name # defined above using .stem
+            returned_program = translator_pass.run(program)
+            
+            # translator preserves the original BTOR2 instruction list so that it remains compatible with the existing pass structure
+            self.assertEqual(returned_program, program)
+            
+            # generated CIRCT module is stored by the translator pass
+            generated_module = translator_pass.generated_module
 
-        # Confirm that translation produced a CIRCT module
-        self.assertIsNotNone(generated_module)
-
-        # Convert the generated module into MLIR text so that the test can check whether the expected CIRCT operations were generated.
-        generated_mlir = str(generated_module)
-
-        self.assertIn("hw.module", generated_mlir)
-        # self.assertIn("comb.add", generated_mlir)
-        self.assertIn("hw.output", generated_mlir)
-
-        print("generalized translator adder w/ comparison & ite & slice & zero/sign extension test passed")
+            # Confirm that translation produced a CIRCT module
+            self.assertIsNotNone(generated_module)
+            
+            # Convert the generated module into MLIR text so that the test can check whether the expected CIRCT operations were generated.
+            generated_mlir = str(generated_module)
+            
+            self.assertIn("hw.module", generated_mlir)
+            # self.assertIn("comb.add", generated_mlir)
+            self.assertIn("hw.output", generated_mlir)
+    
+    print("generalized translator adder w/ comparison & ite & slice & zero/sign extension test passed")
 
 
 if __name__ == "__main__":
