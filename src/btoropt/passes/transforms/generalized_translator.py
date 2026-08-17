@@ -1,9 +1,22 @@
-# =====================================================================
-# Nidhi Lawange
+##########################################################################
+# Generalized an scalable btor2-to-mlir translator that converts 
+# btor2 programs into semantically equivalent circt ir using core circt # dialects.
 #
-# Description:
-# Generalized BTOR2-to-CIRCT translation pass that receives an already-parsed BTOR2 program from the btor2-opt pass infrastructure, constructs hardware module interfaces, translates BTOR2 instructions into CIRCT IR using the HW and Comb dialects, and generates an MLIR representation of the input BTOR2 program. The translator is designed to be easily adaptable and scalable to support additional BTOR2 operations and sequential hardware constructs.
-#=======================================================================
+# Copyright (C) 2026  Nidhi Lawange
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+##########################################################################
 
 import circt
 import inspect
@@ -17,11 +30,11 @@ from circt.ir import (
     Attribute
 )
 
-from circt.dialects import hw, comb, verif
+from circt.dialects import hw, comb, verif, seq
 
 # Import the existing btor2-opt pass interface.
 from ..genericpass import Pass
-from ...program import Instruction, Sort, Input, Output, Add, Sub, And, Or, Xor, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq, Neq, Ugt, Ugte, Ult, Ulte, Sgt, Sgte, Slt, Slte, Ite, Slice, Concat, Uext, Sext, Mul, Udiv, Sdiv, Urem, Srem, Sll, Srl, Sra, Implies, Constraint, Bad
+from ...program import Instruction, Sort, Input, Output, Add, Sub, And, Or, Xor, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq, Neq, Ugt, Ugte, Ult, Ulte, Sgt, Sgte, Slt, Slte, Ite, Slice, Concat, Uext, Sext, Mul, Udiv, Sdiv, Urem, Srem, Sll, Srl, Sra, Implies, Constraint, Bad, State, Init, Next
 
 
 # The generalized translator now inherits from Pass so it can be invoked
@@ -42,6 +55,9 @@ class Btor2CirctTranslator(Pass):
         # dictionary for mapping the btor line id reference (to a sort [type])
         # to an actual circt operation type
         self.line_type_dict = {}
+
+        # store state-related information from btor2 while translating the state, init, and next instructions that it's associated with
+        self.state_dict = {}
 
         # Store the generated CIRCT module so that it can later be inspected
         # by automated tests or other parts of the translation flow.
@@ -92,6 +108,7 @@ class Btor2CirctTranslator(Pass):
         # Clear previous mappings in case the same pass object is reused on a previous btor2 program
         self.line_value_dict.clear()
         self.line_type_dict.clear()
+        self.state_dict.clear()
         self.generated_module = None
 
         # Translate the parsed BTOR2 program into a CIRCT MLIR module
@@ -192,6 +209,32 @@ class Btor2CirctTranslator(Pass):
                 output_values.append(output_value)
 
         return output_values
+    
+    def get_state_info(self):
+        for instruction in self.program:
+
+            # found a state instruction in the btor input --> start with adding to the state dictionary definitions
+            if isinstance(instruction, State):
+                self.state_dict[instruction.lid] = {
+                    "state_instruction": instruction,
+                    "init_instruction": None,
+                    "next_instruction": None,
+                }
+            # init becomes the second entry of the state dictionary that is associated with that instruction that is being stored in the first entry of dictionary
+            elif isinstance(instruction, Init):
+                state_instruction = instruction.operands[1]
+                # for that state instruction (distinguishable from other state instructions by the line id of that state instruction)
+                self.state_dict[state_instruction.lid]
+                # define the value for the init instruction key in the line_dict for that instruction line id as the init instruction
+                ["init_instruction"] = instruction
+
+            # Next becomes the third entry of the state dictionary that is associated with that instruction that is being stored in the first entry of dictionary
+            elif isinstance(instruction, Next):
+                state_instruction = instruction.operands[1]
+                # for that next state instruction (distinguishable from other state instructions by the line id of that state instruction)
+                self.state_dict[state_instruction.lid]
+                # define the value for the next state instruction key in the line_dict for that instruction line id as the init instruction
+                ["next_instruction"] = instruction
     #------------------------small helpers------------------------------
     def create_constant(self,const_type, value):
             constant_op = hw.ConstantOp.create(
@@ -213,6 +256,7 @@ class Btor2CirctTranslator(Pass):
             )
     
             return operation.operation.results[0]
+    
     
     #--------------------layer 2: operation translation-----------------
 
