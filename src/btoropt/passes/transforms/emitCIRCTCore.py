@@ -1,8 +1,7 @@
 ##########################################################################
-# Generalized an scalable btor2-to-mlir translator that converts 
-# btor2 programs into semantically equivalent circt ir using core circt # dialects.
+# BTOR2 parser, code optimizer, and circuit miter
 #
-# Copyright (C) 2026  Nidhi Lawange
+# Copyright (C) 2026  Amelia Dobis, Nidhi Lawange
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,6 +16,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ##########################################################################
+
+# Generalized an scalable btor2-to-mlir translator that converts 
+# btor2 programs into semantically equivalent circt ir using core circt # dialects.
 
 import circt
 import inspect

@@ -1,7 +1,7 @@
 ##########################################################################
-# Test suite adapted from test.py for checking btor2 parsing and the # functionality of the generalized btor2-to-mlir translator.
+# BTOR2 parser, code optimizer, and circuit miter
 # 
-# Copyright (C) 2026  Nidhi Lawange
+# Copyright (C) 2026  Amelia Dobis, Nidhi Lawange
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,6 +16,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ########################################################################
+##
+
+# Tester class adapted from test.py for checking btor2 parsing and the # functionality of the generalized btor2-to-mlir translator.
 
 import unittest
 from pathlib import Path
