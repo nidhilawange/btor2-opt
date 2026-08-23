@@ -25,7 +25,7 @@ from ..passes.validation.checkLidOrdering import CheckLidOrdering
 from ..passes.transforms.renameStates import RenameStates
 from ..passes.transforms.stateIncrement import StateIncrement
 from ..passes.transforms.combAdder import CombAdder
-from .transforms.generalized_translator import Btor2CirctTranslator
+from ..passes.transforms.emitCIRCTCore import Btor2CirctTranslator
 
 # Retrieves a pass from the list given an id
 def find_pass(p: list[Pass], id: str) -> Pass:

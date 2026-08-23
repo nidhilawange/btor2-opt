@@ -34,6 +34,8 @@ from circt.ir import (
 
 from circt.dialects import hw, comb, verif, seq
 
+from circt.support import BackedgeBuilder, connect
+
 # Import the existing btor2-opt pass interface.
 from ..genericpass import Pass
 from ...program import Instruction, Sort, Input, Output, Add, Sub, And, Or, Xor, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq, Neq, Ugt, Ugte, Ult, Ulte, Sgt, Sgte, Slt, Slte, Ite, Slice, Concat, Uext, Sext, Mul, Udiv, Sdiv, Urem, Srem, Sll, Srl, Sra, Implies, Constraint, Bad, State, Init, Next
@@ -45,7 +47,7 @@ class Btor2CirctTranslator(Pass):
 
     def __init__(self):
         # Name used to identify this pass in the pass infrastructure.
-        super().__init__("generalized-translator")
+        super().__init__("emit-circt-core")
 
         # The parsed BTOR2 program is supplied by the pass infrastructure
         # when run() is called.
@@ -60,6 +62,12 @@ class Btor2CirctTranslator(Pass):
 
         # store state-related information from btor2 while translating the state, init, and next instructions that it's associated with
         self.state_dict = {}
+
+        # store circt ssa value corresponding to implicit clock input that will be added to only state-dependent btor2 programs 
+        self.clock_value = None
+        
+        # store temporary backedge that represents the current state values at the same time that the combinational next state logic is being translated
+        self.state_register_dict = {}
 
         # Store the generated CIRCT module so that it can later be inspected
         # by automated tests or other parts of the translation flow.
@@ -111,6 +119,9 @@ class Btor2CirctTranslator(Pass):
         self.line_value_dict.clear()
         self.line_type_dict.clear()
         self.state_dict.clear()
+        self.state_register_dict.clear()
+        # clear previously stored clock SSA value for next btor program
+        self.clock_value = None
         self.generated_module = None
 
         # Translate the parsed BTOR2 program into a CIRCT MLIR module
@@ -142,6 +153,14 @@ class Btor2CirctTranslator(Pass):
                 input_ports_gen_list.append(
                     (instruction.name, input_type)
                 )
+        if self.state_dict:
+            # construct the circt clock type
+            clock_type = seq.ClockType.get()
+
+            # add to the generated input ports that circt clock type after all the explicit btor inputs before have been added
+            # name of input, input type
+            input_ports_gen_list.append(("clk",clock_type))
+
 
         return input_ports_gen_list
 
@@ -169,7 +188,8 @@ class Btor2CirctTranslator(Pass):
                 )
 
         return output_ports_gen_list
-    # ------------------------------------------------------------------
+
+    # -------------------Mapping SSA Values------------------------
 
     # map input PORTS to their SSA values
     def map_input_ports_values(self, block):
@@ -194,6 +214,10 @@ class Btor2CirctTranslator(Pass):
                 # move to the next hardware module input port
                 block_arg_index += 1
 
+        if self.state_dict:
+            # since clock doesn't correspond to line id in btor2, store clock's ssa value separately 
+            self.clock_value = block.arguments[block_arg_index]
+
     def map_output_values(self):
         output_values = []
 
@@ -211,7 +235,8 @@ class Btor2CirctTranslator(Pass):
                 output_values.append(output_value)
 
         return output_values
-    
+
+    #----------------State-Related Helper Functions----------------
     def get_state_info(self):
         for instruction in self.program:
 
@@ -226,18 +251,46 @@ class Btor2CirctTranslator(Pass):
             elif isinstance(instruction, Init):
                 state_instruction = instruction.operands[1]
                 # for that state instruction (distinguishable from other state instructions by the line id of that state instruction)
-                self.state_dict[state_instruction.lid]
                 # define the value for the init instruction key in the line_dict for that instruction line id as the init instruction
-                ["init_instruction"] = instruction
+                self.state_dict[state_instruction.lid]["init_instruction"] = instruction
 
             # Next becomes the third entry of the state dictionary that is associated with that instruction that is being stored in the first entry of dictionary
             elif isinstance(instruction, Next):
                 state_instruction = instruction.operands[1]
                 # for that next state instruction (distinguishable from other state instructions by the line id of that state instruction)
-                self.state_dict[state_instruction.lid]
+                self.state_dict[state_instruction.lid]["next_instruction"] = instruction
                 # define the value for the next state instruction key in the line_dict for that instruction line id as the init instruction
-                ["next_instruction"] = instruction
-    #------------------------small helpers------------------------------
+        
+    
+    def create_state_backedges(self):
+    # Need a way for combinational instructions inside sequential btor2 programs to access the current state SSA value before the actual seq.compreg operation has been created
+
+        for state_instr_lid, state_info in self.state_dict.items():
+
+            # We already populated state_dict with the information associated with this current btor2 state instruction
+            state_instruction = state_info["state_instruction"]
+
+            # Obtain the CIRCT type corresponding to this btor2 state
+            state_type = self.line_type_dict[state_instruction.sid]
+
+            # Create a temporary SSA value representing the current state; cannot create the final register yet because its next state input has not been translated
+            # but later combinational instructions may already need to use the current state
+            state_backedge = BackedgeBuilder.create(
+                state_type,
+                state_instruction.name,
+                None,
+            )
+
+            # Save this temporary current-state value so that later, after creating the real seq.compreg, we can replace it with the actual register result.
+            self.state_register_dict[state_instruction.lid] = state_backedge
+
+            # Temporarily map the btor2 state line ID to this circt ssa value so instructions like next_counter = counter + 1 can get "counter" normally through line_value_dict as that register value itself
+            self.line_value_dict[state_instruction.lid] = (
+                state_backedge.result
+            )
+
+
+    #---------small helpers for some translation functions----------
     def create_constant(self,const_type, value):
             constant_op = hw.ConstantOp.create(
                         const_type,
@@ -261,35 +314,6 @@ class Btor2CirctTranslator(Pass):
     
     
     #--------------------layer 2: operation translation-----------------
-
-    #def translate_binary_operation(self, instruction, circt_operation):
-            # operands[1] and operands[2] are the left and right btor2 operands
-            left_instruction = instruction.operands[1]
-            right_instruction = instruction.operands[2]
-    
-            # obtain the circt SSA values previously generated for both operands
-            left_op_value = self.line_value_dict[left_instruction.lid]
-            right_op_value = self.line_value_dict[right_instruction.lid]
-    
-            # create the corresponding CIRCT binary operation
-            circt_operation, wrapper_type = \
-            self.binary_op_dict[type(instruction)]
-
-            # for Addition, Subtraction, and Multiplication
-            if wrapper_type == "varied":
-                operation = circt_operation(
-                    [left_op_value, right_op_value]
-                )
-            # for Division and Remainder
-            else:
-                operation = circt_operation(
-                    left_op_value,
-                    right_op_value,
-                )
-    
-            # map this btor2 instruction's line ID to the newly generated SSA value
-            self.line_value_dict[instruction.lid] = operation.result
-
 
     def extract_binary_operands(self, instruction):
             # btor2 binary instructions store:
@@ -756,7 +780,71 @@ class Btor2CirctTranslator(Pass):
         verif.AssertOp(
             inverted_condition.result
         )
+    
+    def translate_any_state_instruction(self):
+        
+        for state_instr_lid, state_info in self.state_dict.items():
+            # already saved state info associated with current state instruction
+            state_instruction = state_info["state_instruction"]
+            init_instruction = state_info["init_instruction"]
+            next_instruction = state_info["next_instruction"]
 
+            # Obtain the circt sort type associated with this state
+            state_type = self.line_type_dict[state_instruction.sid]
+
+            # obtain circt ssa value that btor2 says should actually become the value of the 'next' state on the next transition
+            next_state_instruction = next_instruction.operands[2]
+
+            # normal program-order translation has already translated that next-state expression, so obtain that next state's circt ssa value.
+            next_state_instruction_value = self.line_value_dict[next_state_instruction.lid]
+
+            # btor2 Init is optional, so initially assume that this state does not have an initialization value
+            init_value = None
+            
+            if init_instruction is not None:
+
+                # btor2 Init format: init <sort> <state> <initial_value>
+                # operands[2] references the instruction that defines the initial value of this state
+                init_instruction = init_instruction.operands[2]
+
+                # That instruction has already been translated into circt, so obtain its circt ssa value
+                init_value = self.line_value_dict[
+                    init_instruction.lid
+                ]
+
+            # Now both values required to construct the real register are available:
+            # input          = translated btor2 next-state value
+            # clk            = clock input added by translator
+            # power_on_value = translated btor2 init value (if there)
+            # CompRegOp constructor handles power_on_value and converts a constant initialization value into the !seq.immutable representation required by circt
+            if init_value is not None:
+                state_register = seq.CompRegOp(
+                    state_type,
+                    input=next_state_instruction_value,
+                    clk=self.clock_value,
+                    power_on_value=init_value,
+                    name=state_instruction.name,
+                )
+            else:
+                state_register = seq.CompRegOp(
+                    state_type,
+                    input=next_state_instruction_value,
+                    clk=self.clock_value,
+                    name=state_instruction.name,
+                )
+
+            # obtain the temporary current state ssa value that create_state_backedges() created earlier
+            state_backedge = self.state_register_dict[state_instruction.lid]
+
+            # All combinational operations that previously used the temporary current state ssa value should now use the actual register result using the following replace method provided by circt
+            state_backedge.result.replace_all_uses_with(state_register.data)
+
+            # temporary SSA value is no longer needed so can be erased
+            state_backedge.erase()
+
+            # now replace the temporary state value mapping in line_value dictionary with the actual current state SSA value produced by seq.compreg
+            self.line_value_dict[state_instruction.lid] = (state_register.data)
+            
     #-------------------------------------------------------------------
     
     def translate_instructions_in_program_order(self):
@@ -786,6 +874,14 @@ class Btor2CirctTranslator(Pass):
             # Outputs are handled after all the value-producing instructions have been translated
             elif isinstance(instruction, Output):
                 continue
+            
+            # handled through a sequence of required helper functions for translating this set of sequential instructions
+            elif isinstance(instruction, (State,Init,Next)):
+                continue # because if a state instruction is found, we cannot directly translate it -- still have to create a backedge that we replace later and then produce the final result value for a particular state instruction to which another Init and Next instruction are associated
+            
+            elif instruction.lid in self.line_value_dict:
+                # some instructions used as state initialization values may have already been translated before creating the state register
+                    continue
 
             elif isinstance(instruction, constant_op_types):
                 self.translate_const_operation(instruction)
@@ -841,6 +937,7 @@ class Btor2CirctTranslator(Pass):
             elif isinstance(instruction, Bad):
                 self.translate_bad_operation(instruction)
             
+            
     def translate_btor_program(self):
 
         with Context() as ctx, Location.unknown():
@@ -856,6 +953,7 @@ class Btor2CirctTranslator(Pass):
 
             #print("Type map:", self.line_type_dict)
 
+            self.get_state_info()
             input_ports_list = self.construct_input_ports()
             output_ports_list = self.construct_output_ports()
             
@@ -886,7 +984,10 @@ class Btor2CirctTranslator(Pass):
 
                 # with automatic input SSA value mapping
                 self.map_input_ports_values(block)
-        
+
+                # Keep a BackedgeBuilder active while creating registers whose next-state inputs are not available yet; circt stores these unresolved inputs as temporary backedges until connect() replaces them with the translated next-state ssa values
+                with BackedgeBuilder(self.module_name):
+                    
                 # Translate every value-producing BTOR2 instruction once, in the same order in which it appears in the original btor program
                 #help(comb.MuxOp)
                 #help(comb.ExtractOp)
@@ -896,8 +997,16 @@ class Btor2CirctTranslator(Pass):
                 #help(comb.DivUOp)
                 #help(comb.ModSOp)
                 #help(comb.MulOp)
-                self.translate_instructions_in_program_order()
-                                
+                #help(seq.compreg)
+                #help(seq.ClockType)
+                    #help(seq.CompRegOp)
+                    print(hasattr(seq, "CompRegBuilder"))
+                    self.create_state_backedges()
+                    self.translate_instructions_in_program_order()
+
+                # since all next-state and init-state operations have stored corresponding circt ssa values, can now create the actual seq.compreg operations and replace the earlier generated temporary backedge values
+                    self.translate_any_state_instruction()
+
                 # create hardware output operation
                 # hw.output %0, where %0 is the translated output value
                 # automatic output SSA value collection

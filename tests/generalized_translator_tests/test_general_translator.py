@@ -57,7 +57,7 @@ class BTORTestGeneralizedTranslator(unittest.TestCase):
             # Obtain the registered generalized translator pass.
             translator_pass = find_pass(
                 all_passes,
-                "generalized-translator"
+                "emit-circt-core"
             )
 
             # Confirm that the pass was actually registered in allpasses.py
@@ -78,12 +78,18 @@ class BTORTestGeneralizedTranslator(unittest.TestCase):
             
             # Convert the generated module into MLIR text so that the test can check whether the expected CIRCT operations were generated.
             generated_mlir = str(generated_module)
-            
+
+            print("\n==========================================")
+            print(f"Testing: {input_btor_file.name}")
+            print("============================================")
+                        
             self.assertIn("hw.module", generated_mlir)
             # self.assertIn("comb.add", generated_mlir)
             self.assertIn("hw.output", generated_mlir)
+
+            print(f"\n{input_btor_file.name} PASSED")
     
-    print("generalized translator adder w/ comparison & ite & slice & zero/sign extension test passed")
+    #print("generalized translator adder w/ comparison & ite & slice & zero/sign extension test passed")
 
 
 if __name__ == "__main__":
