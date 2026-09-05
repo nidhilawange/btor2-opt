@@ -1000,7 +1000,7 @@ class Btor2CirctTranslator(Pass):
                 #help(seq.compreg)
                 #help(seq.ClockType)
                     #help(seq.CompRegOp)
-                    print(hasattr(seq, "CompRegBuilder"))
+                    #print(hasattr(seq, "CompRegBuilder"))
                     self.create_state_backedges()
                     self.translate_instructions_in_program_order()
 
