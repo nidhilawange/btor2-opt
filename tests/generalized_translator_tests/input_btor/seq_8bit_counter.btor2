@@ -1,0 +1,8 @@
+1 sort bitvec 8
+2 state 1 counter
+3 zero 1
+4 init 1 2 3
+5 one 1
+6 add 1 2 5
+7 next 1 2 6
+8 output 2 out

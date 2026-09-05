@@ -1,0 +1,16 @@
+1 sort bitvec 4
+2 sort bitvec 8
+3 sort bitvec 1
+4 input 1 a
+5 input 1 b
+6 constd 1 1
+7 add 1 4 6
+8 add 1 5 6
+9 ugt 3 7 8
+10 constraint 9
+11 ite 1 9 7 8
+12 uext 2 11 4
+13 sext 2 11 4
+14 output 11 selected_sum_4bit
+15 output 12 zero_extended_sum
+16 output 13 sign_extended_sum
