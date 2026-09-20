@@ -38,7 +38,7 @@ from circt.support import BackedgeBuilder, connect
 
 # Import the existing btor2-opt pass interface.
 from ..genericpass import Pass
-from ...program import Instruction, Sort, Input, Output, Add, Sub, And, Or, Xor, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq, Neq, Ugt, Ugte, Ult, Ulte, Sgt, Sgte, Slt, Slte, Ite, Slice, Concat, Uext, Sext, Mul, Udiv, Sdiv, Urem, Srem, Sll, Srl, Sra, Implies, Constraint, Bad, State, Init, Next
+from ...program import Instruction, Sort, Input, Output, Add, Sub, And, Or, Xor, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq, Neq, Ugt, Ugte, Ult, Ulte, Sgt, Sgte, Slt, Slte, Ite, Slice, Concat, Uext, Sext, Mul, Udiv, Sdiv, Urem, Srem, Sll, Srl, Sra, Implies, Constraint, Bad, State, Init, Next, Read, Write
 
 
 # The generalized translator now inherits from Pass so it can be invoked
@@ -138,8 +138,25 @@ class Btor2CirctTranslator(Pass):
     def construct_type_dict(self):
         for instruction in self.program:
             if isinstance(instruction,Sort):
-                bit_width = instruction.width
-                circt_type = IntegerType.get_signless(bit_width)
+
+                if instruction.typ == "array":
+                    # obtain circt type of element stored in the array
+                    element_type = self.line_type_dict[instruction.sort_element.lid]
+
+                    # btor array sort address width gives the max num
+                    # of possible array elements: 
+                    # n-bit addr = 2^n indices
+                    addr_width = instruction.sort_addr.width
+                    array_size = 1 << addr_width
+
+                    # create the cirt type for the crict hw array type
+                    circt_type = hw.ArrayType.get(element_type,
+                                        array_size)
+                
+                else:
+                    bit_width = instruction.width
+                    circt_type = IntegerType.get_signless(bit_width)
+                    
                 self.line_type_dict[instruction.lid] = circt_type
 
     # constructing input ports in the Module interface:
@@ -951,7 +968,7 @@ class Btor2CirctTranslator(Pass):
             # i8 = IntegerType.get_signless(8)
             self.construct_type_dict()
 
-            #print("Type map:", self.line_type_dict)
+            print("Type map:", self.line_type_dict)
 
             self.get_state_info()
             input_ports_list = self.construct_input_ports()

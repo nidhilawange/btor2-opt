@@ -788,18 +788,45 @@ class Parser:
 
                 # Construct instruction
                 op = Sext(lid, sort, operand, width, name)
+            
+            case "read":
+            # Sanity check: verify that instruction is well formed
+                assert len(inst) >= 5,\
+                    "read instruction must of the form: <lid> read <sid> <array> <index>. Found: " + line
+
+                # find operands associated to this instruction or defer
+                (sort, array, index) = \
+                    tuple(self.defer(inst[2:5])) if deferred else \
+                    tuple(map(lambda i: self.find_inst(int(i)), inst[2:5]))
+                
+                # construct instruction
+                op = Read(lid, sort, array, index)
+
+            case "write":
+            # Sanity check: verify that instruction is well formed
+                assert len(inst) >= 6,\
+                    "write instruction must of the form: <lid> write <sid> <array> <index> <value>. Found: " + line
+
+                # find operands associated to this instruction or defer
+                (sort, array, index, value) = \
+                    tuple(self.defer(inst[2:6])) if deferred else \
+                    tuple(map(lambda i: self.find_inst(int(i)), inst[2:6]))
+                
+                # construct instruction
+                op = Write(lid, sort, array, index, value)
 
             case _:
                 print(f"Unsupported operation type: {tag} in {line}")
                 exit(1)
+        
         return op
-    
+
 
     # Resolves the IDs of all of the operands
     def resolveIds(self, inst: Instruction) -> Instruction:
         inst.operands = list(map(lambda op: self.context.get(op.lid), inst.operands)) 
         # could be any instruction but type array valid for Sort instruction only so perform 2 conditional checks
-        if isinstance(inst, Sort) and inst.type == "array":
+        if isinstance(inst, Sort) and inst.typ == "array":
             inst.sort_addr = inst.operands[0]
             inst.sort_element = inst.operands[1]
 

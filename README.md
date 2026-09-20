@@ -52,6 +52,7 @@ This compiler currently supports the following btor2 instructions:
 | `<lid> s{l,r}l <sid> <l> <r>` | Logical shift left/right |
 | `<lid> sra <sid> <l> <r>` | Arithmetic shift right |
 | `<lid> and/or/xor <sid> <l> <r>` | Binary logical operators |
+| `<lid> redand/redor/redxor <sid> <val>` | Unary reduction operators |
 | `<lid> concat <sid> <l> <r>` | Concatenate two results |
 | `<lid> eq/neq <sid> <l> <r>` | Equality comparators |
 | `<lid> {s,u}gt <sid> <l> <r>` | Signed/Unsigned *l* \> *r* |
