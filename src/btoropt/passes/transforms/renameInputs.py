@@ -32,8 +32,10 @@ class RenameInputs(Pass):
         res = []
         for inst in p:
             if isinstance(inst, Input):
-                res.append(Input(inst.lid, inst.sort, f"inp_{i}"))
+                res.append(Input(inst.lid, inst.operands[0], f"inp_{i}"))
                 i += 1
             else:
                 res.append(inst)
         return res
+
+# add new pass implementation (renameStates.py new file)

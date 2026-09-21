@@ -28,7 +28,7 @@ tags = ["sort","input", "output", "bad", "constraint", "zero",
         # Unary operations
         "not", "inc", "dec", "neg", "redor", "redxor", "redand",
         "eq", "neq", "ugt", "sgt", "ugte", "sgte", "ult",
-        "slt", "ulte", "slte", "uext", "sext"]
+        "slt", "ulte", "slte", "uext", "sext", "read", "write"]
 
 # All legal sort types
 sort_tags = ["bitvector", "bitvec", "array"]
@@ -95,16 +95,22 @@ def get_inst(p: list[Instruction], lid: int) -> Instruction:
 # @param type: {bitvector | bitvec | array}, the type of sort we are declaring
 # @param width: the width of the declared sort
 class Sort(Instruction):
-    def __init__(self, lid: int, typ: str, width: int):
-        super().__init__(lid, "sort", [])
+    def __init__(self, lid: int, typ: str, width: int = None, sort_addr: Instruction = None, sort_element: Instruction = None):
+        super().__init__(lid, "sort", [sort_addr, sort_element] if typ == "array" else [])
         self.typ: str = typ
         self.width: int = width
+        self.sort_addr: Instruction = sort_addr
+        self.sort_element: Instruction = sort_element
 
     def eq(self, inst) -> bool:
-        return super().eq(inst) and self.typ == inst.typ and self.width == inst.width
+        return super().eq(inst) and self.typ == inst.typ and self.width == inst.width and self.sort_addr == inst.sort_addr and self.sort_element == inst.sort_element
 
     def serialize(self) -> str:
-        return super().serialize() + self.typ + " " + str(self.width)
+        if self.typ != "array":
+            return super().serialize() + self.typ + " " + str(self.width)
+        else:
+            return str(self.lid) + " " + self.inst + " " + self.typ + " " + \
+            str(self.sort_addr.lid) + " " + str(self.sort_element.lid)
 
 # Input instruction: declares an input
 # @param sort: the sort defining the type of this input
@@ -380,6 +386,14 @@ class Sext(Instruction):
     def __init__(self, lid: int, sort: Sort, op: Instruction, width: int, name: str):
         super().__init__(lid, "sext", [sort, op, width, name])
         self.width: int = width
+
+class Read(Instruction):
+    def __init__(self, lid: int, sort: Sort, array: Instruction, index: Instruction):
+        super().__init__(lid, "read", [sort, array, index])
+    
+class Write(Instruction):
+    def __init__(self, lid: int, sort: Sort, array: Instruction, index: Instruction, value: Instruction):
+        super().__init__(lid, "write", [sort, array, index, value])
 
 
 ############ NON-STANDARD: Custom extensions for btor-opt ############

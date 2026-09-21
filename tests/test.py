@@ -20,6 +20,8 @@ import unittest
 
 from src.btoropt.parser import *
 from src.btoropt.modparser import *
+# new import:
+from src.btoropt.passes.allpasses import all_passes, find_pass
 
 def parsewrapper (filepath):
     btor2str: list[str] = []
