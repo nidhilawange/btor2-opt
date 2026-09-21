@@ -861,7 +861,33 @@ class Btor2CirctTranslator(Pass):
 
             # now replace the temporary state value mapping in line_value dictionary with the actual current state SSA value produced by seq.compreg
             self.line_value_dict[state_instruction.lid] = (state_register.data)
-            
+        
+    def translate_readArr_operation(self, instruction):
+        # obtain the ssa value of the array and index to read from in the dictionary due to known operands structure and line id saved earlier
+        array_val = self.line_value_dict[instruction.operands[1].lid]
+        index_val = self.line_value_dict[instruction.operands[2].lid]
+
+        # create CIRCT array get operation to read the element stored at that index of that array
+        read_operation = hw.ArrayGetOp.create(array_val,index_val)
+        # now map the btor read array insruction's line id to the corresponding circt ssa value so later instructions can use the value that was read
+        self.line_value_dict[instruction.lid] = read_operation.result
+    
+    def translate_writeArr_operation(self, instruction):
+        # obtain the ssa value of original array and the index to write to in dictionary via line id saved earlier
+        array_val = self.line_value_dict[instruction.operands[1].lid]
+        index_val = self.line_value_dict[instruction.operands[2].lid]
+
+        # obtain ssa value that needs to be written into the array at that index
+        element_val = self.line_value_dict[instruction.operands[3].lid]
+        # obtain the array type that the array write operation results in
+        result_typ = self.line_type_dict[instruction.operands[0].lid]
+
+        # now create the new circt array value with circt ssa value for element inserted at circt ssa value for index as reference for writing
+        write_operation = hw.ArrayInjectOp(array_val, index_val, element_val, results=[result_typ])
+
+        # then map btor write instruction's line id to new array's ssa value so later instructions can use that modified array value
+        self.line_value_dict[instruction.lid] = write_operation.result
+
     #-------------------------------------------------------------------
     
     def translate_instructions_in_program_order(self):
@@ -954,6 +980,12 @@ class Btor2CirctTranslator(Pass):
             elif isinstance(instruction, Bad):
                 self.translate_bad_operation(instruction)
             
+            elif isinstance(instruction, Read):
+                self.translate_readArr_operation(instruction)
+            
+            elif isinstance(instruction, Write):
+                self.translate_writeArr_operation(instruction)
+            
             
     def translate_btor_program(self):
 
@@ -981,8 +1013,8 @@ class Btor2CirctTranslator(Pass):
 
                 # create hardware module
                 # corresponds to: hw.module @comb_adder()
-                adder = hw.HWModuleOp(
-                    name=self.module_name,
+                hw_module = hw.HWModuleOp(
+                    self.module_name,
 
                     # input_ports_list returned from
                     # construct_input_ports()
@@ -995,7 +1027,7 @@ class Btor2CirctTranslator(Pass):
 
             # Since the Region initially contains no blocks,
             # we must explicitly create one.
-            block = adder.add_entry_block()
+            block = hw_module.add_entry_block()
 
             with InsertionPoint(block):
 
