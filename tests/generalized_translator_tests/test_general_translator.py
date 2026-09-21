@@ -84,8 +84,18 @@ class BTORTestGeneralizedTranslator(unittest.TestCase):
             print("============================================")
                         
             self.assertIn("hw.module", generated_mlir)
-            # self.assertIn("comb.add", generated_mlir)
             self.assertIn("hw.output", generated_mlir)
+
+            # checking array read translation
+            if input_btor_file.name == "state_test.btor2":
+                self.assertIn("hw.arrayGet", generated_mlir)
+
+            # check array state, read, write translations
+            if input_btor_file.name == "state_test.btor2":
+                self.assertIn("hw.arrayGet", generated_mlir)
+                self.assertIn("hw.arrayInject", generated_mlir)
+                self.assertIn("seq.compreg", generated_mlir)
+
 
             print(f"\n{input_btor_file.name} PASSED")
     

@@ -1000,7 +1000,7 @@ class Btor2CirctTranslator(Pass):
             # i8 = IntegerType.get_signless(8)
             self.construct_type_dict()
 
-            print("Type map:", self.line_type_dict)
+            # print("Type map:", self.line_type_dict)
 
             self.get_state_info()
             input_ports_list = self.construct_input_ports()
