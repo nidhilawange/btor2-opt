@@ -19,7 +19,7 @@
 from functools import reduce
 
 # All supported btor2 instruction tags
-tags = ["sort","input", "output", "bad", "constraint", "zero",
+tags = {"sort","input", "output", "bad", "constraint", "zero",
         "one", "ones", "constd", "consth", "const", "state",
         "init", "next", "slice", "ite", "implies", "iff",
         "add", "sub", "mul", "sdiv", "udiv", "smod", 
@@ -28,7 +28,7 @@ tags = ["sort","input", "output", "bad", "constraint", "zero",
         # Unary operations
         "not", "inc", "dec", "neg", "redor", "redxor", "redand",
         "eq", "neq", "ugt", "sgt", "ugte", "sgte", "ult",
-        "slt", "ulte", "slte", "uext", "sext", "read", "write"]
+        "slt", "ulte", "slte", "uext", "sext", "read", "write"}
 
 # All legal sort types
 sort_tags = ["bitvector", "bitvec", "array"]

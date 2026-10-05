@@ -149,10 +149,8 @@ class Btor2CirctTranslator(Pass):
                     addr_width = instruction.sort_addr.width
                     array_size = 1 << addr_width
 
-                    # create the cirt type for the crict hw array type
-                    circt_type = hw.ArrayType.get(element_type,
-                                        array_size)
-                
+                    # create the cirt type for the circt high-level memory type
+                    circt_type = seq.HLMemType.get([array_size],element_type)
                 else:
                     bit_width = instruction.width
                     circt_type = IntegerType.get_signless(bit_width)
@@ -1010,7 +1008,7 @@ class Btor2CirctTranslator(Pass):
 
             # new operations inserted into the module body
             with InsertionPoint(module.body):
-
+               
                 # create hardware module
                 # corresponds to: hw.module @comb_adder()
                 hw_module = hw.HWModuleOp(
@@ -1030,7 +1028,14 @@ class Btor2CirctTranslator(Pass):
             block = hw_module.add_entry_block()
 
             with InsertionPoint(block):
+                clock_value = block.arguments[0]
+                element_type = IntegerType.get_signless(32)
+                memory_type = seq.HLMemType.get([4],element_type)
+                reset = hw.ConstantOp.create(IntegerType.get_signless(1),0)
 
+                memory = seq.HLMemOp(memory_type,clock_value,reset.result,"mem",)
+
+                hw.OutputOp([])
                 # with automatic input SSA value mapping
                 self.map_input_ports_values(block)
 
@@ -1038,18 +1043,7 @@ class Btor2CirctTranslator(Pass):
                 with BackedgeBuilder(self.module_name):
                     
                 # Translate every value-producing BTOR2 instruction once, in the same order in which it appears in the original btor program
-                #help(comb.MuxOp)
-                #help(comb.ExtractOp)
-                #print(hasattr(comb.ExtractOp, "create"))
-                #help(comb.ConcatOp)
-                #help(comb.ReplicateOp)
-                #help(comb.DivUOp)
-                #help(comb.ModSOp)
-                #help(comb.MulOp)
-                #help(seq.compreg)
-                #help(seq.ClockType)
-                    #help(seq.CompRegOp)
-                    #print(hasattr(seq, "CompRegBuilder"))
+            
                     self.create_state_backedges()
                     self.translate_instructions_in_program_order()
 
