@@ -40,6 +40,10 @@ from circt.support import BackedgeBuilder, connect
 from ..genericpass import Pass
 from ...program import Instruction, Sort, Input, Output, Add, Sub, And, Or, Xor, Const, Constd, Consth, Zero, One, Ones, Not, Inc, Dec, Neg, Redor, Redand, Redxor, Eq, Neq, Ugt, Ugte, Ult, Ulte, Sgt, Sgte, Slt, Slte, Ite, Slice, Concat, Uext, Sext, Mul, Udiv, Sdiv, Urem, Srem, Sll, Srl, Sra, Implies, Constraint, Bad, State, Init, Next, Read, Write
 
+circt_sort_types = {
+    "bv": {"bitvector","bitvec"},
+    "array": {"array"}
+}
 
 # The generalized translator now inherits from Pass so it can be invoked
 # through the existing btor2-opt pass infrastructure.
@@ -139,7 +143,7 @@ class Btor2CirctTranslator(Pass):
         for instruction in self.program:
             if isinstance(instruction,Sort):
 
-                if instruction.typ == "array":
+                if instruction.typ in circt_sort_types["array"]:
                     # obtain circt type of element stored in the array
                     element_type = self.line_type_dict[instruction.sort_element.lid]
 
@@ -278,31 +282,27 @@ class Btor2CirctTranslator(Pass):
         
     
     def create_state_backedges(self):
-    # Need a way for combinational instructions inside sequential btor2 programs to access the current state SSA value before the actual seq.compreg operation has been created
+    for state_instr_lid, state_info in self.state_dict.items():
 
-        for state_instr_lid, state_info in self.state_dict.items():
 
-            # We already populated state_dict with the information associated with this current btor2 state instruction
             state_instruction = state_info["state_instruction"]
-
-            # Obtain the CIRCT type corresponding to this btor2 state
             state_type = self.line_type_dict[state_instruction.sid]
 
-            # Create a temporary SSA value representing the current state; cannot create the final register yet because its next state input has not been translated
-            # but later combinational instructions may already need to use the current state
+
             state_backedge = BackedgeBuilder.create(
                 state_type,
                 state_instruction.name,
                 None,
             )
 
-            # Save this temporary current-state value so that later, after creating the real seq.compreg, we can replace it with the actual register result.
+
             self.state_register_dict[state_instruction.lid] = state_backedge
 
-            # Temporarily map the btor2 state line ID to this circt ssa value so instructions like next_counter = counter + 1 can get "counter" normally through line_value_dict as that register value itself
+
             self.line_value_dict[state_instruction.lid] = (
                 state_backedge.result
             )
+
 
 
     #---------small helpers for some translation functions----------
@@ -1028,14 +1028,6 @@ class Btor2CirctTranslator(Pass):
             block = hw_module.add_entry_block()
 
             with InsertionPoint(block):
-                clock_value = block.arguments[0]
-                element_type = IntegerType.get_signless(32)
-                memory_type = seq.HLMemType.get([4],element_type)
-                reset = hw.ConstantOp.create(IntegerType.get_signless(1),0)
-
-                memory = seq.HLMemOp(memory_type,clock_value,reset.result,"mem",)
-
-                hw.OutputOp([])
                 # with automatic input SSA value mapping
                 self.map_input_ports_values(block)
 
