@@ -1,0 +1,6 @@
+1 sort bitvec 8        ; Define a sort: 8-bit bitvector (values 0–255)
+2 state 1 counter      ; Declare state variable "counter" of sort 1 (8b)
+3 constd 1 0           ; Constant value 0 (8-bit)
+4 init 1 2 3           ; Initialize counter (lid2) to const 0 (lid3)
+5 input 1 x            ; Define an 8-bit input variable "x"
+6 next 1 2 5           ; Next-state update: counter(t+1) = x(t) 

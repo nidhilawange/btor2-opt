@@ -86,8 +86,22 @@ class Parser:
                 assert inst[2] in sort_tags,\
                     f"sort must be of type bitvector or array! Found: {inst[2]}"
 
-                # Construct instruction, defer if required
-                op = Sort(lid, inst[2], int(inst[3]))
+                if inst[2] == "array":
+                    assert len(inst) >= 5,\
+                        "array sort instruction must be of the form: <lid> sort array <address sort> <element sort>. Found: " + line
+                    if deferred:
+                        sort_addr, sort_element = self.defer(inst[3:5])
+                    else:
+                        sort_addr = self.find_inst(int(inst[3]))
+                        sort_element = self.find_inst(int(inst[4]))
+
+                    # then construct instruction
+                    op = Sort(lid, inst[2], sort_addr=sort_addr, sort_element=sort_element)
+                
+                # bitvector sort
+                else:
+                    # Construct instruction, defer if required
+                    op = Sort(lid, inst[2], int(inst[3]))
 
             case "input":
                 # Sanity check: verify that instruction is well formed
@@ -774,16 +788,48 @@ class Parser:
 
                 # Construct instruction
                 op = Sext(lid, sort, operand, width, name)
+            
+            case "read":
+            # Sanity check: verify that instruction is well formed
+                assert len(inst) >= 5,\
+                    "read instruction must of the form: <lid> read <sid> <array> <index>. Found: " + line
+
+                # find operands associated to this instruction or defer
+                (sort, array, index) = \
+                    tuple(self.defer(inst[2:5])) if deferred else \
+                    tuple(map(lambda i: self.find_inst(int(i)), inst[2:5]))
+                
+                # construct instruction
+                op = Read(lid, sort, array, index)
+
+            case "write":
+            # Sanity check: verify that instruction is well formed
+                assert len(inst) >= 6,\
+                    "write instruction must of the form: <lid> write <sid> <array> <index> <value>. Found: " + line
+
+                # find operands associated to this instruction or defer
+                (sort, array, index, value) = \
+                    tuple(self.defer(inst[2:6])) if deferred else \
+                    tuple(map(lambda i: self.find_inst(int(i)), inst[2:6]))
+                
+                # construct instruction
+                op = Write(lid, sort, array, index, value)
 
             case _:
                 print(f"Unsupported operation type: {tag} in {line}")
                 exit(1)
+        
         return op
-    
+
 
     # Resolves the IDs of all of the operands
     def resolveIds(self, inst: Instruction) -> Instruction:
         inst.operands = list(map(lambda op: self.context.get(op.lid), inst.operands)) 
+        # could be any instruction but type array valid for Sort instruction only so perform 2 conditional checks
+        if isinstance(inst, Sort) and inst.typ == "array":
+            inst.sort_addr = inst.operands[0]
+            inst.sort_element = inst.operands[1]
+
         return inst
 
     # Parses the entire program using deferred operand resolution
@@ -815,4 +861,5 @@ class Parser:
 
         # Parser is done parsing
         self.done = True
+        return self.p # now btor2 gets the parsed program (parsed instruction list) itself
 

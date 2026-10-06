@@ -1,0 +1,7 @@
+1 sort bitvec 8
+2 sort bitvec 32
+3 sort array 1 2
+4 input 3 mem
+5 input 1 addr
+6 read 2 4 5
+7 output 6

@@ -1,0 +1,13 @@
+1 sort bitvec 8
+2 input 1 a
+3 input 1 b
+4 mul 1 2 3
+5 udiv 1 2 3
+6 sdiv 1 2 3
+7 urem 1 2 3
+8 srem 1 2 3
+9 output 4 mul_out
+10 output 5 udiv_out
+11 output 6 sdiv_out
+12 output 7 urem_out
+13 output 8 srem_out
