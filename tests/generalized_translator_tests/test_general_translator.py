@@ -85,16 +85,12 @@ class BTORTestGeneralizedTranslator(unittest.TestCase):
                         
             self.assertIn("hw.module", generated_mlir)
             self.assertIn("hw.output", generated_mlir)
-
-            # checking array read translation
-            if input_btor_file.name == "state_test.btor2":
-                self.assertIn("hw.array_get", generated_mlir)
-
+            
             # check array state, read, write translations
-            if input_btor_file.name == "state_test.btor2":
-                self.assertIn("hw.array_get", generated_mlir)
-                self.assertIn("hw.array_inject", generated_mlir)
-                self.assertIn("seq.compreg", generated_mlir)
+            if input_btor_file.name == "state_memory_test.btor2":
+                self.assertIn("seq.hlmem", generated_mlir)
+                self.assertIn("seq.read", generated_mlir)
+                self.assertIn("seq.write", generated_mlir)
 
 
             print(f"\n{input_btor_file.name} PASSED")

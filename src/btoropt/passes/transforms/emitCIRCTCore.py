@@ -282,27 +282,41 @@ class Btor2CirctTranslator(Pass):
         
     
     def create_state_backedges(self):
-    for state_instr_lid, state_info in self.state_dict.items():
+    # Need a way for combinational instructions inside sequential btor2 programs to access the current state SSA value before the actual seq.compreg operation has been created
 
+        for state_instr_lid, state_info in self.state_dict.items():
 
+            # We already populated state_dict with the information associated with this current btor2 state instruction
             state_instruction = state_info["state_instruction"]
+
+            # obtain btor2 sort associated with this state
+            state_sort = state_instruction.operands[0]
+            # Obtain the CIRCT type corresponding to this btor2 state
             state_type = self.line_type_dict[state_instruction.sid]
 
+            if state_sort.typ in circt_sort_types["array"]:
+                reset = hw.ConstantOp.create(IntegerType.get_signless(1),0)
 
-            state_backedge = BackedgeBuilder.create(
-                state_type,
-                state_instruction.name,
-                None,
-            )
+                # instantiate array state directly as a seq high-level memory
+                memory = seq.HLMemOp(state_type,self.clock_value,reset.result,state_instruction.name,)
+                # now, map btor2 state line directly to circt  memory handle
+                self.line_value_dict[state_instruction.lid] = memory.handle
+            else:
+                # Create a temporary SSA value representing the current state; cannot create the final register yet because its next state input has not been translated
+                # but later combinational instructions may already need to use the current state
+                state_backedge = BackedgeBuilder.create(
+                    state_type,
+                    state_instruction.name,
+                    None,
+                )
 
+                # Save this temporary current-state value so that later, after creating the real seq.compreg, we can replace it with the actual register result.
+                self.state_register_dict[state_instruction.lid] = state_backedge
 
-            self.state_register_dict[state_instruction.lid] = state_backedge
-
-
-            self.line_value_dict[state_instruction.lid] = (
-                state_backedge.result
-            )
-
+                # Temporarily map the btor2 state line ID to this circt ssa value so instructions like next_counter = counter + 1 can get "counter" normally through line_value_dict as that register value itself
+                self.line_value_dict[state_instruction.lid] = (
+                    state_backedge.result
+                )
 
 
     #---------small helpers for some translation functions----------
@@ -804,6 +818,31 @@ class Btor2CirctTranslator(Pass):
             init_instruction = state_info["init_instruction"]
             next_instruction = state_info["next_instruction"]
 
+            # obtain btor2 sort corresponding to this state
+            state_sort = state_instruction.operands[0]
+
+            if state_sort.typ in circt_sort_types["array"]:
+                # obtain instruction that holds next value of this memory
+                next_state_instruction = next_instruction.operands[2]
+            
+                if isinstance(next_state_instruction, Write):
+                    # obtain memory, address, and data instructions
+                    memory_instr = next_state_instruction.operands[1]
+                    index_instr = next_state_instruction.operands[2]
+                    element_instr = next_state_instruction.operands[3]
+
+                    memory_val = self.line_value_dict[memory_instr.lid]
+                    index_val = self.line_value_dict[index_instr.lid]
+                    element_val = self.line_value_dict[element_instr.lid]
+
+                    # create one0bit constant 1 to permanently keep write enabled
+                    write_en = self.create_constant(IntegerType.get_signless(1),1,)
+
+                    # now, update memory at this address on the clock edge
+                    seq.WritePortOp(memory_val, [index_val], element_val, write_en, 1,)
+
+                continue
+
             # Obtain the circt sort type associated with this state
             state_type = self.line_type_dict[state_instruction.sid]
 
@@ -861,31 +900,20 @@ class Btor2CirctTranslator(Pass):
             self.line_value_dict[state_instruction.lid] = (state_register.data)
         
     def translate_readArr_operation(self, instruction):
-        # obtain the ssa value of the array and index to read from in the dictionary due to known operands structure and line id saved earlier
-        array_val = self.line_value_dict[instruction.operands[1].lid]
+        # obtain circt memory handle and address SSA value
+        memory_val = self.line_value_dict[instruction.operands[1].lid]
         index_val = self.line_value_dict[instruction.operands[2].lid]
 
-        # create CIRCT array get operation to read the element stored at that index of that array
-        read_operation = hw.ArrayGetOp.create(array_val,index_val)
-        # now map the btor read array insruction's line id to the corresponding circt ssa value so later instructions can use the value that was read
-        self.line_value_dict[instruction.lid] = read_operation.result
-    
-    def translate_writeArr_operation(self, instruction):
-        # obtain the ssa value of original array and the index to write to in dictionary via line id saved earlier
-        array_val = self.line_value_dict[instruction.operands[1].lid]
-        index_val = self.line_value_dict[instruction.operands[2].lid]
-
-        # obtain ssa value that needs to be written into the array at that index
-        element_val = self.line_value_dict[instruction.operands[3].lid]
-        # obtain the array type that the array write operation results in
+        # obtain circt type of value resulting from btor read
         result_typ = self.line_type_dict[instruction.operands[0].lid]
 
-        # now create the new circt array value with circt ssa value for element inserted at circt ssa value for index as reference for writing
-        write_operation = hw.ArrayInjectOp(array_val, index_val, element_val, results=[result_typ])
+        # create register read port on instantiated hlmem
+        read_operation = seq.ReadPortOp(result_typ, memory_val,[index_val],0)
 
-        # then map btor write instruction's line id to new array's ssa value so later instructions can use that modified array value
-        self.line_value_dict[instruction.lid] = write_operation.result
+        # now map the btor read array insruction's line id to the corresponding circt ssa value so later instructions can use the value that was read
+        self.line_value_dict[instruction.lid] = read_operation.readData
 
+    
     #-------------------------------------------------------------------
     
     def translate_instructions_in_program_order(self):
@@ -982,7 +1010,7 @@ class Btor2CirctTranslator(Pass):
                 self.translate_readArr_operation(instruction)
             
             elif isinstance(instruction, Write):
-                self.translate_writeArr_operation(instruction)
+                continue
             
             
     def translate_btor_program(self):
