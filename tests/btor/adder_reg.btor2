@@ -1,0 +1,8 @@
+; 8-bit registered adder
+1 sort bitvec 8 ; 8-bit vector type 
+2 input 1 a ; a is an input referring to 8-bit vector data type (1)
+3 input 1 b ; b is an input referring to 8-bit vector data type (1)
+4 state 1 sum_reg ; state = Verilog reg - store 8-bit vector sum_reg 
+5 add 1 2 3 ; add a (2) and b (3) and put in 8 bit vector type (1)
+6 next 1 4 5 ; "clock" the addition (5) into sum_reg (4)
+7 output 4 ; state and next connect clock and output=sum_reg

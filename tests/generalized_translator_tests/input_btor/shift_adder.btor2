@@ -1,0 +1,7 @@
+1 sort bitvec 8
+2 input 1 a
+3 input 1 b
+4 add 1 2 3
+5 one 1
+6 sll 1 4 5
+7 output 6 scaled_sum
